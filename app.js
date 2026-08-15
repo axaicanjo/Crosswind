@@ -2,7 +2,7 @@
    Offline-first PWA. Not for navigation. */
 'use strict';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const $ = (id) => document.getElementById(id);
 const KT_PER_KMH = 0.539957;
 const HPA_PER_INHG = 33.8638866667;
@@ -608,10 +608,13 @@ function renderDiagram(row, wind) {
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
   p.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Runway ${row ? row.id : ''} wind diagram">`);
-  p.push(`<defs>
-    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>
-  </defs>`);
+  // One marker per colour: Safari does not support fill="context-stroke".
+  const MARKERS = { wind: 'var(--wind)', head: 'var(--head)', tail: 'var(--tail)',
+    cross: 'var(--cross)', muted: 'var(--muted)' };
+  p.push('<defs>' + Object.keys(MARKERS).map((k) =>
+    `<marker id="ah-${k}" viewBox="0 0 12 7" refX="11.5" refY="3.5" markerWidth="5" markerHeight="2.9"
+       orient="auto-start-reverse"><path d="M0,0 L12,3.5 L0,7 z" fill="${MARKERS[k]}"/></marker>`
+  ).join('') + '</defs>');
 
   // scale ring
   p.push(`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--line)" stroke-width="1"/>`);
@@ -650,7 +653,7 @@ function renderDiagram(row, wind) {
   p.push(`<text x="${W - 42}" y="18" text-anchor="middle" fill="var(--muted)" font-size="11"
     font-weight="700" letter-spacing=".5">MAG N</text>`);
   p.push(`<g transform="translate(${W - 42} 42) rotate(${nAng})">
-    <line x1="0" y1="15" x2="0" y2="-15" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/>
+    <line x1="0" y1="15" x2="0" y2="-15" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah-muted)"/>
     </g>`);
 
   if (!wind || wind.vrb || wind.spd < 1) {
@@ -690,14 +693,14 @@ function renderDiagram(row, wind) {
 
   // total wind vector (solid), then the two legs of the right triangle
   p.push(`<line x1="${tx}" y1="${ty}" x2="${cx}" y2="${cy}" stroke="var(--wind)" stroke-width="3"
-    opacity=".9" marker-end="url(#ah)"/>`);
+    opacity=".9" marker-end="url(#ah-wind)"/>`);
   if (Math.abs(headLen) > 3) {
     p.push(`<line x1="${tx}" y1="${ty}" x2="${jx}" y2="${jy}" stroke="${headCol}" stroke-width="4.5"
-      stroke-linecap="round" marker-end="url(#ah)" opacity=".95"/>`);
+      stroke-linecap="round" marker-end="url(#ah-${head < 0 ? 'tail' : 'head'})" opacity=".95"/>`);
   }
   if (Math.abs(crossLen) > 3) {
     p.push(`<line x1="${jx}" y1="${jy}" x2="${cx}" y2="${cy}" stroke="var(--cross)" stroke-width="4.5"
-      stroke-linecap="round" marker-end="url(#ah)" opacity=".95"/>`);
+      stroke-linecap="round" marker-end="url(#ah-cross)" opacity=".95"/>`);
   }
   p.push(`<circle cx="${tx}" cy="${ty}" r="4.5" fill="var(--wind)"/>`);
 
@@ -882,23 +885,67 @@ function setAutoRefresh() {
   if (PREFS.autoRefresh) S.timer = setInterval(() => { if (S.mode === 'metar') refreshWx(true); }, 300000);
 }
 
+/* ------------------------------------------------------- failure reporting */
+/* On an iPad there is no console, so any failure has to be legible on screen. */
+function fatal(where, err) {
+  const msg = (err && (err.message || err)) + '';
+  const stack = (err && err.stack ? String(err.stack) : '').split('\n').slice(0, 4).join('\n');
+  const box = $('boot') || document.body;
+  box.hidden = false;
+  box.innerHTML =
+    '<div class="fatal"><h2>Something broke</h2>' +
+    '<p><strong>' + where + '</strong></p>' +
+    '<pre>' + escapeHtml(msg + (stack ? '\n\n' + stack : '')) + '</pre>' +
+    '<p class="muted small">' + escapeHtml(navigator.userAgent) + '</p>' +
+    '<p class="muted small">Read this out and it can be fixed.</p></div>';
+  try { console.error(where, err); } catch (e) {}
+}
+function escapeHtml(s) {
+  return String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+}
+addEventListener('error', (e) => {
+  if (!S.booted) fatal('Uncaught error during startup', e.error || e.message);
+});
+addEventListener('unhandledrejection', (e) => {
+  if (!S.booted) fatal('Unhandled promise rejection during startup', e.reason);
+});
+
 async function boot() {
-  loadPrefs();
-  applyTheme();
-  matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme);
-  wireSearch();
+  try {
+    loadPrefs();
+    applyTheme();
+    try {
+      matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme);
+    } catch (e) {
+      // Safari < 14 only has the deprecated listener API; theme switching is not worth dying for.
+      try { matchMedia('(prefers-color-scheme: light)').addListener(applyTheme); } catch (e2) {}
+    }
+    wireSearch();
+  } catch (e) { return fatal('Startup (preferences / theme / search wiring)', e); }
+
   try {
     await loadDb();
   } catch (e) {
-    $('boot').textContent = 'Could not load the airport database. ' + e.message;
-    return;
+    return fatal('Loading the airport database (data/airports.json)', e);
   }
-  wireUI();
-  setAutoRefresh();
-  const start = findApt(new URLSearchParams(location.search).get('apt') || PREFS.last || '') ||
-    findApt('KBED');
-  if (start) selectApt(start);
-  else { $('boot').textContent = 'Search for an airport to begin.'; $('search').focus(); }
+
+  try {
+    wireUI();
+    setAutoRefresh();
+  } catch (e) { return fatal('Wiring up the controls', e); }
+
+  try {
+    const start = findApt(new URLSearchParams(location.search).get('apt') || PREFS.last || '') ||
+      findApt('KBED');
+    if (start) selectApt(start);
+    else {
+      $('boot').textContent = 'Search for an airport to begin.';
+      $('main').hidden = false;
+      $('search').focus();
+    }
+  } catch (e) { return fatal('Drawing the first airport', e); }
+
+  S.booted = true;
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

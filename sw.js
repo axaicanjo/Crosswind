@@ -1,5 +1,5 @@
 /* Crosswind service worker — offline app shell + airport database. */
-const VERSION = 'xwind-v1.0.0';
+const VERSION = 'xwind-v1.0.1';
 const SHELL = [
   './',
   './index.html',

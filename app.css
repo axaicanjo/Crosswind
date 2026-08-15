@@ -225,3 +225,14 @@ tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 }
 .paste textarea:focus { border-color: var(--accent); }
 .badge.best-badge { background: color-mix(in srgb, var(--head) 22%, transparent); color: var(--head); font-weight: 700; }
+
+/* [hidden] is a low-specificity UA rule; `main { display: grid }` would beat it. */
+main[hidden], [hidden] { display: none !important; }
+
+.fatal { max-width: 700px; margin: 0 auto; text-align: left; }
+.fatal h2 { color: var(--tail); font-size: 18px; text-transform: none; letter-spacing: 0; margin-bottom: 8px; }
+.fatal pre {
+  white-space: pre-wrap; word-break: break-word; text-align: left;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg);
+}
