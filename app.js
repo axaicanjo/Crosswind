@@ -936,7 +936,7 @@ async function boot() {
 
   try {
     const start = findApt(new URLSearchParams(location.search).get('apt') || PREFS.last || '') ||
-      findApt('KBED');
+      findApt('KJYO');
     if (start) selectApt(start);
     else {
       $('boot').textContent = 'Search for an airport to begin.';
