@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Crosswind</title>
+<meta name="description" content="Runway headwind / crosswind component calculator for US airports.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Crosswind">
+<meta name="theme-color" content="#0d1117">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" class="logo" aria-hidden="true"><path d="M12 2 L12 22 M12 2 L7 9 M12 2 L17 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Crosswind</span>
+  </div>
+  <div class="search-wrap">
+    <input id="search" type="search" inputmode="search" autocomplete="off" autocorrect="off"
+           spellcheck="false" placeholder="Airport ID, name or city…" aria-label="Search airports">
+    <ul id="results" class="results" role="listbox" hidden></ul>
+  </div>
+  <button id="themeBtn" class="icon-btn" title="Toggle day / night" aria-label="Toggle day / night">◐</button>
+  <button id="setBtn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+</header>
+
+<main id="main" hidden>
+
+  <section class="card apt-card">
+    <div class="apt-head">
+      <div>
+        <h1 id="aptId">—</h1>
+        <p id="aptName" class="muted"></p>
+      </div>
+      <button id="favBtn" class="icon-btn star" title="Favorite" aria-label="Favorite">☆</button>
+    </div>
+    <p id="aptMeta" class="muted small"></p>
+  </section>
+
+  <section class="card wind-card">
+    <div class="row between">
+      <h2>Wind</h2>
+      <div class="seg" role="tablist" aria-label="Wind source">
+        <button id="tabMetar" class="seg-btn active" role="tab">METAR</button>
+        <button id="tabManual" class="seg-btn" role="tab">Manual</button>
+      </div>
+    </div>
+
+    <div id="metarPane">
+      <div class="row between wrap">
+        <div id="metarStatus" class="muted small">—</div>
+        <button id="refreshBtn" class="btn small">Refresh</button>
+      </div>
+      <pre id="metarRaw" class="raw" hidden></pre>
+    </div>
+
+    <div id="manualPane" hidden>
+      <div class="fields">
+        <label>Direction
+          <input id="mDir" type="number" inputmode="numeric" min="0" max="360" step="10" placeholder="270">
+          <span class="unit">°</span>
+        </label>
+        <label>Speed
+          <input id="mSpd" type="number" inputmode="numeric" min="0" max="200" step="1" placeholder="12">
+          <span class="unit">kt</span>
+        </label>
+        <label>Gust
+          <input id="mGst" type="number" inputmode="numeric" min="0" max="200" step="1" placeholder="—">
+          <span class="unit">kt</span>
+        </label>
+      </div>
+      <div class="row wrap gap">
+        <label class="chk"><input id="mVrb" type="checkbox"> Variable / unknown direction</label>
+        <div class="seg small-seg" role="group" aria-label="Wind direction reference">
+          <button id="refMag" class="seg-btn active" title="As given by ATIS, tower or AWOS">Magnetic</button>
+          <button id="refTrue" class="seg-btn" title="As printed in a coded METAR or on a forecast">True</button>
+        </div>
+      </div>
+      <p class="muted small" id="refHint">ATIS, tower and AWOS voice winds are magnetic.</p>
+      <details class="paste">
+        <summary>Paste a raw METAR instead</summary>
+        <textarea id="pasteBox" rows="3" spellcheck="false" autocapitalize="characters"
+          placeholder="KBED 141553Z 29014G22KT 10SM FEW045 24/11 A3002"></textarea>
+        <div class="row end gap">
+          <span id="pasteMsg" class="muted small"></span>
+          <button id="pasteBtn" class="btn small" type="button">Use it</button>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="bestCard" class="card best" hidden>
+    <div class="best-label">Best runway</div>
+    <div class="best-rwy" id="bestRwy">—</div>
+    <div class="best-nums">
+      <div><span class="n" id="bestHead">—</span><span class="u">kt</span><label>Headwind</label></div>
+      <div><span class="n" id="bestCross">—</span><span class="u">kt</span><label id="bestCrossLbl">Crosswind</label></div>
+      <div id="bestGustWrap" hidden><span class="n" id="bestGust">—</span><span class="u">kt</span><label>Gust x-wind</label></div>
+    </div>
+    <div id="bestWarn" class="warn" hidden></div>
+  </section>
+
+  <section class="card diagram-card">
+    <div id="diagram" class="diagram"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="card">
+    <div class="row between">
+      <h2>All runways</h2>
+      <label class="chk"><input id="showAll" type="checkbox" checked> Show tailwind options</label>
+    </div>
+    <div class="table-wrap">
+      <table id="rwyTable">
+        <thead><tr>
+          <th>Rwy</th><th>Mag</th><th class="num">Head</th><th class="num">Cross</th>
+          <th class="num">Gust X</th><th>Length</th><th>Surface</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" id="daCard">
+    <h2>Field performance</h2>
+    <div class="da-grid">
+      <div><label>Field elevation</label><span id="daElev">—</span></div>
+      <div><label>Pressure altitude</label><span id="daPA">—</span></div>
+      <div><label>Density altitude</label><span id="daDA">—</span></div>
+      <div><label>Temp / Dew</label><span id="daTemp">—</span></div>
+      <div><label>Altimeter</label><span id="daAlt">—</span></div>
+      <div><label>ISA dev</label><span id="daISA">—</span></div>
+    </div>
+    <p class="muted small" id="daNote"></p>
+  </section>
+
+  <section class="card" id="recentCard" hidden>
+    <h2>Recent &amp; favorites</h2>
+    <div id="recentList" class="chips"></div>
+  </section>
+
+  <footer class="foot">
+    <p class="muted small">
+      Runway and airport data: OurAirports (public domain). Magnetic declination: NOAA/NCEI WMM2025.
+      Weather: NOAA Aviation Weather Center, with NWS api.weather.gov as fallback.
+      <span id="dataGen"></span>
+    </p>
+    <p class="muted small"><strong>Not for navigation.</strong> Advisory only — verify against current charts,
+      the AFD/Chart Supplement and official weather before flight.</p>
+  </footer>
+</main>
+
+<div id="boot" class="boot">Loading airport database…</div>
+
+<dialog id="setDlg" class="dlg">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label class="stack">Personal crosswind limit
+      <span class="inline"><input id="setXw" type="number" inputmode="numeric" min="0" max="60" step="1"> <span class="unit">kt</span></span>
+    </label>
+    <label class="stack">Tailwind caution above
+      <span class="inline"><input id="setTw" type="number" inputmode="numeric" min="0" max="30" step="1"> <span class="unit">kt</span></span>
+    </label>
+    <label class="chk"><input id="setGustLimit" type="checkbox"> Apply the limit to the gust crosswind, not the steady one</label>
+    <label class="chk"><input id="setAutoRefresh" type="checkbox"> Auto-refresh METAR every 5 minutes</label>
+    <div class="row end gap">
+      <button id="clearCache" class="btn ghost" type="button">Clear saved data</button>
+      <button class="btn" value="ok">Done</button>
+    </div>
+    <p class="muted small" id="verLine"></p>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
